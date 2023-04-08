@@ -1,0 +1,285 @@
+---
+title: "Group 2: Class Project"
+subtitle: STAT 334
+author: "Anmol Lakhotia, Kyle Bistrain, and Saanvi Dua"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    theme: readable
+    highlight: haddock
+    toc: true
+    toc_float: true
+    code_folding: hide  
+---
+
+```{r chunk setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      eval=TRUE,
+                      message=FALSE,
+                      warning=FALSE)
+```
+
+# Beginning
+
+## Packages
+
+```{r}
+library(tidyverse)
+library(car)
+library(ggcorrplot)
+library(xtable)
+library(kableExtra)
+library(MASS) 
+library(lmtest)
+library(GGally)
+library(leaps)
+```
+
+
+## Reading the data in
+
+```{r packages, include=FALSE}
+housing_unfiltered <- read.csv("data.csv") 
+housing_unfiltered$waterfront = as.factor(housing_unfiltered$waterfront)
+housing <- housing_unfiltered |> 
+  filter(price < 1000000 & price > 8000 & yr_built > 1934)
+housing$renovated=(housing$yr_renovated!=0)
+housing$basement=(housing$sqft_basement!=0)
+```
+
+## Splitting the data
+
+```{r}
+n = nrow(housing)
+numtrain = ceiling(.8*n) 
+
+set.seed(111) 
+
+train_ind = sample(n, numtrain)
+
+traindata = housing[train_ind, ]   
+testdata = housing[-train_ind, ]
+
+set.seed(NULL)  
+
+
+
+
+```
+
+
+# Variable Selection Method: Best Subsets
+
+
+```{r}
+fullModel = lm(price~bedrooms+bathrooms+sqft_living+sqft_lot+floors+waterfront+view+condition+yr_built+renovated+basement, data = traindata) # full model
+best.sub=summary(regsubsets(formula(fullModel),data=traindata,method="exhaustive",nbest=2))
+n = nrow(traindata) #sample size
+p=c(2,2,3,3,4,4,5,5,6,6, 7,7, 8, 8, 9, 9) #number of coeffs
+
+SSE=best.sub$rss #SSE 
+s=sqrt(SSE/(n-p)) #s
+Rsq=best.sub$rsq #R-squared 
+Rsq.adj=best.sub$adjr2 #R-squared adjusted
+BIC=n*log(SSE/n) + p*log(n)#BIC
+AIC= n*log(SSE/n) + 2*p #AIC
+Cp=best.sub$cp #Mallow's Cp
+
+#Summary Table of Best Subsets
+#double click data frame in environment pane in order to sort through
+(bs.SAT=data.frame(best.sub$outmat, p=p,Cp, AIC, BIC, Rsq, Rsq.adj, s))
+
+```
+
+
+# Visualization
+
+```{r}
+pairs(traindata[,c(2,3,4,5,7,9,10,13)], main = "Matrix Scatterplot")
+cor1 <- cor(traindata[,c(2,3,4,5,7,9,10,13)])
+#corr2 <- round(cor(traindata[,c(2,3,5,7,13)]), 2)
+ggcorrplot(cor1,
+           type = "lower",
+           lab = TRUE, 
+           lab_size = 3,  
+           colors = c("tomato2", "white", "springgreen3"),
+           title="            Housing Correlation Matrix", 
+           digits = 4,
+           ggtheme=theme_bw)
+
+```
+
+```{r}
+
+newTrainingData <- traindata[,c(2,3,4,5,7,9,10,13)]
+ggpairs(newTrainingData, upper = list(continuous='points'),lower=list(continuous='cor'))
+```
+
+```{r}
+ggplot(traindata, aes(x=sqft_living, y = price)) + geom_point() + geom_smooth(method = "lm")
+```
+
+
+#Determining the Best Model
+
+```{r}
+Model = lm(price~bedrooms+bathrooms+sqft_living+floors+view+condition+yr_built+basement, data = traindata)
+summary(Model)
+```
+
+
+```{r}
+residuals=resid(Model)
+fitted=fitted(Model)
+plot(residuals ~ fitted) 
+abline(h=0,lty=2)
+qqnorm(residuals, ylab= "Residuals"); 
+qqline(residuals, lty = 2)
+
+vif(Model)
+
+plot(density(resid(Model)))
+
+plot(resid(Model) ~ sqft_living, data = traindata)
+
+```
+
+```{r}
+Modelxtran = lm(price~bedrooms+bathrooms+sqft_living+I(sqft_living^2)+floors+view+condition+yr_built+basement, data = traindata)
+summary(Modelxtran)
+```
+
+```{r}
+residuals=resid(Modelxtran)
+fitted=fitted(Modelxtran)
+plot(residuals ~ fitted) 
+abline(h=0,lty=2)
+qqnorm(residuals, ylab= "Residuals"); 
+qqline(residuals, lty = 2)
+
+vif(Modelxtran)
+
+plot(density(resid(Modelxtran)))
+
+
+```
+
+```{r}
+boxcox(price~bedrooms+bathrooms+sqft_living+I(sqft_living^2)+floors+view+condition+yr_built+basement, data=traindata, plotit=TRUE, lambda=seq(.1,.6,length=100), lab = "Box Cox Reccomended Transformation for Price")
+```
+
+
+```{r}
+modelytran = lm(I(price^.35)~bedrooms+bathrooms+I(sqft_living-mean(sqft_living))+I((sqft_living-mean(sqft_living))^2)+floors+view+condition+yr_built+basement, data = traindata)
+summary(modelytran)
+```
+
+```{r}
+residuals=resid(modelytran)
+fitted=fitted(modelytran)
+plot(residuals ~ fitted) 
+abline(h=0,lty=2)
+qqnorm(residuals, ylab= "Residuals"); 
+qqline(residuals, lty = 2)
+
+vif(modelytran)
+
+plot(density(resid(modelytran)))
+
+```
+
+#Best Model
+
+```{r}
+bestmodel = lm(I(price^.75)~bedrooms+bathrooms+I(sqft_living-mean(sqft_living))+I((sqft_living-mean(sqft_living))^2)+floors+view+condition+yr_built+basement, data = traindata)
+summary(bestmodel)
+```
+
+```{r}
+residuals=resid(bestmodel)
+fitted=fitted(bestmodel)
+plot(residuals ~ fitted) 
+abline(h=0,lty=2)
+qqnorm(residuals, ylab= "Residuals"); 
+qqline(residuals, lty = 2)
+
+VIF <- vif(bestmodel)
+Predictors <- c("bedrooms", "bathrooms","I(sqft_living - mean(sqft_living))", "I((sqft_living - mean(sqft_living))^2)","floors","view","condition","yr_built","basementTRUE")
+vif.best <- data.frame(Predictors,VIF)
+
+VIF
+
+shapiro.test(resid(bestmodel))
+bptest(bestmodel)
+
+plot(density(resid(bestmodel)))
+
+```
+
+```{r}
+
+traindata$residual = bestmodel$residuals
+par(mfrow=c(2,2))
+plot(bestmodel, labels.id=traindata$sqft_living)
+
+```
+
+```{r}
+t_i=rstudent(bestModel) #studentized residuals
+h_i=hatvalues(bestModel); #leverage
+D_i=cooks.distance(bestModel) #cooks distance
+k=ncol(model.matrix(bestModel))-1 #number of predictors in model
+n=nrow(model.matrix(bestModel)) #sample size
+
+#Leverage plot
+plot(h_i, ylab="Leverage")
+abline(h=c(1,2*sqrt((k+1)/n)),lty=2)
+
+
+#Cooks Distance Plot
+plot(D_i, ylab='Cooks Distance')
+#plot(D_i, ylab='Cooks Distance', ylim=c(0,0.5),type='h')
+abline(h=c(0.5,1),lty=2)
+
+```
+# IX. Statistical Inference 
+
+##partial f test
+```{r}
+reducedmodel = lm(I(price^.75)~I(sqft_living-mean(sqft_living)), data = traindata)
+summary(reducedmodel)
+anova(reducedmodel, bestmodel)
+```
+
+
+
+## PI and CI
+```{r}
+house = data.frame(bedrooms = 3, bathrooms = 3, sqft_living= 2000, floors=1, view=3, condition = 3, basement = TRUE, yr_built=2000)
+predict(bestmodel,newdata = house,interval='prediction', level = .95)
+predict(bestmodel,newdata = house,interval='confidence', level = .95)
+```
+
+## CI extra
+
+```{r}
+confint(bestmodel, level = .95)
+```
+
+```{r}
+confint(bestmodel, level = 1-(1-.95)/9)
+```
+
+# Model Validation
+
+```{r}
+bestmodeltested = lm(I(price^.75)~bedrooms+bathrooms+I(sqft_living-mean(sqft_living))+I((sqft_living-mean(sqft_living))^2)+floors+view+condition+yr_built+basement, data = testdata)
+summary(bestmodeltested)
+
+predicted=predict(bestmodeltested, testdata)
+actual= testdata$price^(.75)
+MSPE=mean((predicted-actual)^2)
+MSPE
+sum((bestmodel$residuals)^2)/(2898)
+```
+
