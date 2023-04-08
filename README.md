@@ -1,5 +1,5 @@
 # PredictingWAHousePrices
 
 1. PDF of Research Report
-2. Rscript
-3. data set
+2. Rmd file
+3. A Kaggle data set of housing prices on a variety of quantitative and a few categorical variables in the State of Washington.
